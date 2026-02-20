@@ -1,0 +1,20 @@
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# PDF Processing
+PyPDF2==3.0.1
+reportlab==4.0.9
+
+# System Utilities
+psutil==5.9.8
+
+# CORS Support
+python-dotenv==1.0.0
+
+# HTTP Client (for manual testing)
+requests==2.31.0
+
+# Optional: Production server
+gunicorn==21.2.0
