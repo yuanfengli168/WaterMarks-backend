@@ -173,7 +173,7 @@ def validate_pdf_structure(file_path: str) -> ValidationResult:
         except Exception as e:
             error_msg = str(e).lower()
             
-            if "encrypted" in error_msg or "password" in error_msg:
+            if "encrypted" in error_msg or "password" in error_msg or "decrypt" in error_msg:
                 return ValidationResult(
                     False,
                     "The PDF is password-protected. Please upload an unencrypted file."

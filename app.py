@@ -4,6 +4,7 @@ Main application file with all API endpoints
 """
 import os
 import threading
+from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,8 +71,8 @@ class StatusResponse(BaseModel):
     status: str
     progress: int
     message: str
-    result_path: str = None
-    error: str = None
+    result_path: Optional[str] = None
+    error: Optional[str] = None
 
 
 # Startup event
