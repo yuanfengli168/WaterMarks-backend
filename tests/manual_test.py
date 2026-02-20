@@ -147,11 +147,23 @@ def test_upload_and_process(pdf_path, chunk_size=5):
         
         for attempt in range(max_attempts):
             status_response = requests.get(f"{BASE_URL}/api/status/{job_id}")
-            status_data = status_response.json()
             
-            status = status_data["status"]
-            progress = status_data["progress"]
-            message = status_data["message"]
+            # Check if response is successful
+            if status_response.status_code != 200:
+                print(f"   [{attempt+1}/{max_attempts}] Waiting for job to be ready... (HTTP {status_response.status_code})")
+                time.sleep(1)
+                continue
+            
+            try:
+                status_data = status_response.json()
+            except Exception as e:
+                print(f"   [{attempt+1}/{max_attempts}] Failed to parse response: {e}")
+                time.sleep(1)
+                continue
+            
+            status = status_data.get("status", "unknown")
+            progress = status_data.get("progress", 0)
+            message = status_data.get("message", "Processing...")
             
             print(f"   [{attempt+1}/{max_attempts}] Status: {status} ({progress}%) - {message}")
             
