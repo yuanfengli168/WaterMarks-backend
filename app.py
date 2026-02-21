@@ -127,8 +127,17 @@ async def startup_event():
                 
                 if next_job:
                     print(f"📤 [QUEUE] Popped job {next_job['job_id']} from queue")
-                    # Process this job
-                    process_queued_job(next_job)
+                    # Launch job in its own thread for concurrent processing
+                    job_thread = threading.Thread(
+                        target=process_queued_job,
+                        args=(next_job,),
+                        daemon=True,
+                        name=f"Job-{next_job['job_id'][:8]}"
+                    )
+                    job_thread.start()
+                    print(f"🧵 [QUEUE] Launched thread for job {next_job['job_id']}")
+                    # Immediately check for next job (allows concurrent processing)
+                    time.sleep(0.5)
                 else:
                     # No job ready or not enough memory, wait a bit
                     time.sleep(2)
