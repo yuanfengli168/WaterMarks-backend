@@ -42,12 +42,25 @@ app = FastAPI(
 )
 
 # Configure CORS
+# Note: Cannot use allow_origins=["*"] with allow_credentials=True (CORS spec violation)
+# For local dev, we explicitly list localhost origins
+cors_origins = config.CORS_ORIGINS if not config.DEBUG else [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if config.DEBUG else config.CORS_ORIGINS,  # Allow all origins in debug mode
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["OPTIONS", "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"],  # Explicitly list all methods
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # Get manager instances
@@ -193,11 +206,17 @@ def process_queued_job(job: dict):
         print(f"📝 [STATUS] Updating {job_id} to 'processing'")
         status_manager.update_status(job_id, status="processing", message="Starting processing from queue")
         
-        def status_callback(status):
-            print(f"📝 [STATUS] Job {job_id} -> {status}")
-            status_manager.update_status(job_id, status=status)
+        def status_callback(status, progress=None):
+            print(f"📝 [STATUS] Job {job_id} -> {status}" + (f" ({progress}%)" if progress else ""))
+            if progress is not None:
+                status_manager.update_status(job_id, status=status, progress=progress)
+            else:
+                status_manager.update_status(job_id, status=status)
         
-        # Process PDF
+        # NOTE: Cannot use signal.alarm() timeout here because this runs in a background thread
+        # Python's signal module only works in the main thread
+        # Render has infrastructure-level timeouts that will handle long-running requests
+        
         result_path = process_pdf_with_watermarks(
             input_pdf_path=job['file_path'],
             chunk_size=job['chunk_size'],
@@ -222,6 +241,18 @@ def process_queued_job(job: dict):
             job_id,
             status="error",
             message="Server out of memory",
+            error=error_msg
+        )
+        queue_manager.mark_error(job_id, error_msg)
+        cleanup_job_files(job_id)
+        
+    except TimeoutError as e:
+        error_msg = "Processing timed out. Try using larger chunk sizes or smaller file."
+        print(f"⏱️ [TIMEOUT] Job {job_id} timed out: {str(e)}")
+        status_manager.update_status(
+            job_id,
+            status="error",
+            message="Processing timeout",
             error=error_msg
         )
         queue_manager.mark_error(job_id, error_msg)
@@ -397,7 +428,7 @@ async def get_job_status(job_id: str):
                     job_id=job_id,
                     status="queued",
                     progress=0,
-                    message=f"Your job is queued. {position - 1} job(s) ahead of you.",
+                    message=f"Your job is queued. {position - 1} job(s) in queue.",
                     queue_position=position,
                     jobs_ahead=position - 1,
                     estimated_wait_seconds=wait_seconds,

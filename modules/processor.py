@@ -188,13 +188,14 @@ def parallel_watermark_chunks(
         raise Exception(f"Failed to process chunks in parallel: {str(e)}")
 
 
-def merge_chunks(chunk_paths: List[str], output_path: str) -> str:
+def merge_chunks(chunk_paths: List[str], output_path: str, status_callback=None) -> str:
     """
     Merge watermarked chunks back into a single PDF.
     
     Args:
         chunk_paths: List of paths to watermarked chunk PDFs (in order)
         output_path: Path to save merged PDF
+        status_callback: Optional callback for progress updates
         
     Returns:
         Path to merged PDF
@@ -204,18 +205,31 @@ def merge_chunks(chunk_paths: List[str], output_path: str) -> str:
     """
     try:
         merger = PdfMerger()
+        total_chunks = len(chunk_paths)
         
-        # Add each chunk in order
-        for chunk_path in chunk_paths:
+        # Add each chunk in order with progress reporting
+        for i, chunk_path in enumerate(chunk_paths):
             if not os.path.exists(chunk_path):
                 raise Exception(f"Chunk file not found: {chunk_path}")
             merger.append(chunk_path)
+            
+            # Report progress: 80% (start of merge) to 95% (end of merge)
+            if status_callback and total_chunks > 1:
+                progress = 80 + int((i + 1) / total_chunks * 15)  # 80-95%
+                status_callback("merging", progress=progress)
         
-        # Write merged PDF
+        # Write merged PDF (final 5% of progress)
+        if status_callback:
+            status_callback("merging", progress=95)
+            
         with open(output_path, 'wb') as output_file:
             merger.write(output_file)
         
         merger.close()
+        
+        # Final merge complete
+        if status_callback:
+            status_callback("merging", progress=100)
         
         return output_path
         
@@ -268,7 +282,7 @@ def process_pdf_with_watermarks(
         
         # Step 3: Merge chunks
         if status_callback:
-            status_callback("merging")
+            status_callback("merging", progress=80)
         
         # Get watermarked chunk paths in order
         chunk_paths = [chunk.output_path for chunk in processed_chunks]
@@ -277,7 +291,7 @@ def process_pdf_with_watermarks(
         output_filename = f"watermarked_{job_id}.pdf"
         output_path = os.path.join(config.OUTPUT_DIR, output_filename)
         
-        merge_chunks(chunk_paths, output_path)
+        merge_chunks(chunk_paths, output_path, status_callback=status_callback)
         
         # Update status to finished
         if status_callback:
