@@ -20,7 +20,7 @@ class JobQueueManager:
     def __init__(self, queue_file="queue.json"):
         self.queue_file = queue_file
         self.jobs: Dict[str, dict] = {}
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()  # Use RLock for reentrant locking (prevents deadlock)
         self._load_from_disk()
         self._start_cleanup_thread()
     

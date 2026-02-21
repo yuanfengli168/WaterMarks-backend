@@ -101,12 +101,14 @@ async def startup_event():
     
     # Start background queue processor
     def queue_processor():
+        print("🚀 [QUEUE] Queue processor thread started")
         while True:
             try:
                 # Try to get next job from queue
                 next_job = queue_manager.pop_next_job()
                 
                 if next_job:
+                    print(f"📤 [QUEUE] Popped job {next_job['job_id']} from queue")
                     # Process this job
                     process_queued_job(next_job)
                 else:
@@ -114,6 +116,8 @@ async def startup_event():
                     time.sleep(2)
             except Exception as e:
                 print(f"❌ Queue processor error: {e}")
+                import traceback
+                traceback.print_exc()
                 time.sleep(5)
     
     thread = threading.Thread(target=queue_processor, daemon=True)
@@ -182,12 +186,15 @@ def process_queued_job(job: dict):
         job: Job dict from queue
     """
     job_id = job['job_id']
+    print(f"🔄 [QUEUE] Processing job {job_id}")
     
     try:
         # Update status to processing (job already created in upload endpoint)
+        print(f"📝 [STATUS] Updating {job_id} to 'processing'")
         status_manager.update_status(job_id, status="processing", message="Starting processing from queue")
         
         def status_callback(status):
+            print(f"📝 [STATUS] Job {job_id} -> {status}")
             status_manager.update_status(job_id, status=status)
         
         # Process PDF
@@ -274,12 +281,15 @@ async def upload_pdf(
     Returns:
         UploadResponse with job_id or 503 if server busy
     """
+    print(f"📤 [UPLOAD] Received upload request for file: {file.filename}")
     try:
         # Get or create session
+        print(f"🔑 [UPLOAD] Getting/creating session for: {session_id}")
         session = get_or_create_session(session_id)
         response.set_cookie(key="session_id", value=session, httponly=True, max_age=86400)
         
         # Validate file type
+        print(f"✅ [UPLOAD] Validating file type: {file.filename}")
         if not is_allowed_file(file.filename):
             raise HTTPException(
                 status_code=400,
@@ -287,6 +297,7 @@ async def upload_pdf(
             )
         
         # Validate chunk size
+        print(f"✅ [UPLOAD] Validating chunk_size: {chunk_size}")
         if chunk_size <= 0:
             raise HTTPException(
                 status_code=400,
@@ -294,10 +305,13 @@ async def upload_pdf(
             )
         
         # Read file
+        print(f"📖 [UPLOAD] Reading file content...")
         content = await file.read()
         file_size = len(content)
+        print(f"📖 [UPLOAD] File read complete. Size: {file_size} bytes")
         
         # Check if queue can accept this job
+        print(f"🔍 [UPLOAD] Checking if queue can accept job (session: {session}, size: {file_size})")
         can_accept, message, retry_info = queue_manager.can_accept_job(session, file_size)
         
         if not can_accept:
@@ -332,6 +346,7 @@ async def upload_pdf(
             raise HTTPException(status_code=400, detail=pdf_validation.message)
         
         # Add to queue
+        print(f"➕ [QUEUE] Adding job {job_id} to queue")
         queue_manager.add_job(
             job_id=job_id,
             session_id=session,
@@ -341,6 +356,7 @@ async def upload_pdf(
         )
         
         # Create status tracking
+        print(f"📝 [STATUS] Creating job {job_id} with status 'queued'")
         status_manager.create_job(job_id, "Queued for processing")
         
         return UploadResponse(
