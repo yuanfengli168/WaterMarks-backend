@@ -4,8 +4,10 @@ Main application file with all API endpoints
 """
 import os
 import threading
+import time
 from typing import Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from datetime import datetime, timedelta
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Response, Cookie
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -20,6 +22,8 @@ from modules.validator import (
 )
 from modules.processor import process_pdf_with_watermarks
 from modules.status_manager import get_status_manager
+from modules.queue_manager import get_queue_manager
+from modules.session_manager import get_or_create_session
 from utils.helpers import (
     generate_job_id,
     ensure_directories_exist,
@@ -46,8 +50,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get status manager instance
+# Get manager instances
 status_manager = get_status_manager()
+queue_manager = get_queue_manager()
 
 
 # Pydantic models for request/response
@@ -74,6 +79,18 @@ class StatusResponse(BaseModel):
     message: str
     result_path: Optional[str] = None
     error: Optional[str] = None
+    queue_position: Optional[int] = None
+    jobs_ahead: Optional[int] = None
+    estimated_wait_seconds: Optional[int] = None
+    estimated_start_time: Optional[str] = None
+
+
+class ServerBusyResponse(BaseModel):
+    error: str
+    message: str
+    retry_after_seconds: int
+    retry_after_time: str
+    reason: str
 
 
 # Startup event
@@ -81,9 +98,31 @@ class StatusResponse(BaseModel):
 async def startup_event():
     """Initialize application on startup"""
     ensure_directories_exist()
+    
+    # Start background queue processor
+    def queue_processor():
+        while True:
+            try:
+                # Try to get next job from queue
+                next_job = queue_manager.pop_next_job()
+                
+                if next_job:
+                    # Process this job
+                    process_queued_job(next_job)
+                else:
+                    # No job ready or not enough memory, wait a bit
+                    time.sleep(2)
+            except Exception as e:
+                print(f"❌ Queue processor error: {e}")
+                time.sleep(5)
+    
+    thread = threading.Thread(target=queue_processor, daemon=True)
+    thread.start()
+    
     print("✅ WaterMarks Backend started successfully")
     print(f"📁 Temp directory: {config.TEMP_DIR}")
     print(f"🎨 Watermark colors: {len(config.WATERMARK_COLORS)} colors available")
+    print(f"🔄 Queue processor started")
 
 
 # Health check endpoint
@@ -101,7 +140,7 @@ async def root():
 async def health_check():
     """
     Health check endpoint for monitoring and Render wake-up.
-    Returns 200 OK if server is healthy.
+    Returns 200 OK if server is healthy + queue status.
     """
     import psutil
     
@@ -111,6 +150,10 @@ async def health_check():
             "status": "healthy",
             "server": "running",
             "active_jobs": status_manager.count_active_jobs(),
+            "queue": {
+                "queued_jobs": queue_manager.get_queue_count(),
+                "processing_jobs": queue_manager.get_processing_count()
+            },
             "memory": {
                 "available_mb": round(memory.available / (1024 * 1024), 2),
                 "percent_used": memory.percent
@@ -128,7 +171,68 @@ async def health_check():
 @app.get("/ping")
 async def ping():
     """Simple ping endpoint for wake-up calls"""
-    return {"pong": True, "timestamp": __import__('time').time()}
+    return {"pong": True, "timestamp": time.time()}
+
+
+def process_queued_job(job: dict):
+    """
+    Background function to process a job from queue.
+    
+    Args:
+        job: Job dict from queue
+    """
+    job_id = job['job_id']
+    
+    try:
+        # Create status tracking
+        status_manager.create_job(job_id, "Starting processing from queue")
+        
+        def status_callback(status):
+            status_manager.update_status(job_id, status=status)
+        
+        # Process PDF
+        result_path = process_pdf_with_watermarks(
+            input_pdf_path=job['file_path'],
+            chunk_size=job['chunk_size'],
+            job_id=job_id,
+            status_callback=status_callback
+        )
+        
+        # Update final status
+        status_manager.update_status(
+            job_id,
+            status="finished",
+            message="PDF processed successfully. Download within 1 minute.",
+            result_path=result_path
+        )
+        
+        # Mark as finished in queue (starts 1-minute timer)
+        queue_manager.mark_finished(job_id)
+        
+    except MemoryError as e:
+        error_msg = f"Memory exhausted: {str(e)}. Please try a smaller file."
+        status_manager.update_status(
+            job_id,
+            status="error",
+            message="Server out of memory",
+            error=error_msg
+        )
+        queue_manager.mark_error(job_id, error_msg)
+        cleanup_job_files(job_id)
+        
+    except Exception as e:
+        error_msg = str(e)
+        if "memory" in error_msg.lower() or "overflow" in error_msg.lower():
+            error_msg = f"Processing failed due to insufficient memory. Error: {error_msg}"
+        
+        status_manager.update_status(
+            job_id,
+            status="error",
+            message="Processing failed",
+            error=error_msg
+        )
+        queue_manager.mark_error(job_id, error_msg)
+        cleanup_job_files(job_id)
 
 
 # API Endpoints
@@ -153,20 +257,28 @@ async def check_file_size(request: SizeCheckRequest):
 
 @app.post("/api/upload", response_model=UploadResponse)
 async def upload_pdf(
+    response: Response,
     file: UploadFile = File(...),
-    chunk_size: int = Form(default=config.DEFAULT_CHUNK_SIZE)
+    chunk_size: int = Form(default=config.DEFAULT_CHUNK_SIZE),
+    session_id: Optional[str] = Cookie(default=None)
 ):
     """
     Upload PDF file for processing.
+    Uses queue system with session-based user tracking.
     
     Args:
         file: PDF file to process
         chunk_size: Number of pages per chunk
+        session_id: User session (cookie)
         
     Returns:
-        UploadResponse with job_id for tracking
+        UploadResponse with job_id or 503 if server busy
     """
     try:
+        # Get or create session
+        session = get_or_create_session(session_id)
+        response.set_cookie(key="session_id", value=session, httponly=True, max_age=86400)
+        
         # Validate file type
         if not is_allowed_file(file.filename):
             raise HTTPException(
@@ -181,103 +293,59 @@ async def upload_pdf(
                 detail="Chunk size must be greater than 0"
             )
         
+        # Read file
+        content = await file.read()
+        file_size = len(content)
+        
+        # Check if queue can accept this job
+        can_accept, message, retry_info = queue_manager.can_accept_job(session, file_size)
+        
+        if not can_accept:
+            # Server busy - return 503 with retry info
+            if retry_info:
+                retry_time = datetime.now() + timedelta(seconds=retry_info['retry_after_seconds'])
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "Server at capacity",
+                        "message": f"{message} Please try again in {retry_info['retry_after_seconds'] // 60} minutes.",
+                        "retry_after_seconds": retry_info['retry_after_seconds'],
+                        "retry_after_time": retry_time.isoformat(),
+                        "reason": retry_info['reason']
+                    }
+                )
+        
         # Generate job ID
         job_id = generate_job_id()
         
-        # Create job status
-        status_manager.create_job(job_id, "Uploading file")
-        
-        # Save uploaded file
+        # Save uploaded file to disk (NOT in memory)
         upload_path = os.path.join(config.UPLOAD_DIR, f"{job_id}.pdf")
-        
         with open(upload_path, "wb") as buffer:
-            content = await file.read()
             buffer.write(content)
         
-        file_size = len(content)
-        
-        # Lightweight size re-check
-        size_check = validate_file_size_on_upload(file_size)
-        if not size_check.is_valid:
-            cleanup_job_files(job_id)
-            status_manager.delete_job(job_id)
-            raise HTTPException(status_code=413, detail=size_check.message)
+        del content  # Free memory immediately
         
         # Validate PDF structure
         pdf_validation = validate_pdf_structure(upload_path)
         if not pdf_validation.is_valid:
-            cleanup_job_files(job_id)
-            status_manager.delete_job(job_id)
+            os.remove(upload_path)  # Clean up
             raise HTTPException(status_code=400, detail=pdf_validation.message)
         
-        # Update status
-        status_manager.update_status(
-            job_id,
-            status="uploading",
-            message=f"PDF validated ({pdf_validation.data.get('num_pages')} pages)"
+        # Add to queue
+        queue_manager.add_job(
+            job_id=job_id,
+            session_id=session,
+            file_path=upload_path,
+            file_size=file_size,
+            chunk_size=chunk_size
         )
         
-        # Start processing in background thread
-        def process_in_background():
-            try:
-                # Check memory before starting
-                memory = psutil.virtual_memory()
-                available_ram = memory.available
-                if available_ram < config.MIN_FREE_RAM_REQUIRED:
-                    raise MemoryError(
-                        f"Insufficient memory to process file. "
-                        f"Available: {available_ram / (1024*1024):.1f}MB, "
-                        f"Required: {config.MIN_FREE_RAM_REQUIRED / (1024*1024):.1f}MB"
-                    )
-                
-                def status_callback(status):
-                    status_manager.update_status(job_id, status=status)
-                
-                # Process PDF
-                result_path = process_pdf_with_watermarks(
-                    input_pdf_path=upload_path,
-                    chunk_size=chunk_size,
-                    job_id=job_id,
-                    status_callback=status_callback
-                )
-                
-                # Update final status
-                status_manager.update_status(
-                    job_id,
-                    status="finished",
-                    message="PDF processed successfully",
-                    result_path=result_path
-                )
-                
-            except MemoryError as e:
-                status_manager.update_status(
-                    job_id,
-                    status="error",
-                    message="Server out of memory",
-                    error=f"Memory exhausted: {str(e)}. Please try a smaller file or upgrade server plan."
-                )
-                cleanup_job_files(job_id)
-            except Exception as e:
-                error_msg = str(e)
-                # Check if it's a memory-related error
-                if "memory" in error_msg.lower() or "overflow" in error_msg.lower():
-                    error_msg = f"Processing failed due to insufficient memory. File may be too large for server capacity. Error: {error_msg}"
-                
-                status_manager.update_status(
-                    job_id,
-                    status="error",
-                    message="Processing failed",
-                    error=error_msg
-                )
-                cleanup_job_files(job_id)
-        
-        # Start background processing
-        thread = threading.Thread(target=process_in_background, daemon=True)
-        thread.start()
+        # Create status tracking
+        status_manager.create_job(job_id, "Queued for processing")
         
         return UploadResponse(
             job_id=job_id,
-            message="File uploaded successfully. Processing started."
+            message="File uploaded successfully. Added to processing queue."
         )
         
     except HTTPException:
@@ -290,20 +358,57 @@ async def upload_pdf(
 async def get_job_status(job_id: str):
     """
     Get current status of a processing job.
+    Shows queue position if queued, processing status if active.
     
     Args:
         job_id: Job identifier
         
     Returns:
-        StatusResponse with current job status
+        StatusResponse with current job status and queue info
     """
     try:
+        # Check queue first
+        queue_job = queue_manager.get_job(job_id)
+        
+        if queue_job:
+            if queue_job['status'] == 'queued':
+                # Job is waiting in queue
+                position = queue_manager.get_queue_position(job_id)
+                wait_seconds = queue_manager.estimate_wait_time(job_id)
+                start_time = datetime.now() + timedelta(seconds=wait_seconds)
+                
+                return StatusResponse(
+                    job_id=job_id,
+                    status="queued",
+                    progress=0,
+                    message=f"Your job is queued. {position - 1} job(s) ahead of you.",
+                    queue_position=position,
+                    jobs_ahead=position - 1,
+                    estimated_wait_seconds=wait_seconds,
+                    estimated_start_time=start_time.isoformat()
+                )
+            
+            elif queue_job['status'] == 'finished':
+                # Check if download window expired
+                if queue_job.get('download_window_expires'):
+                    expires = datetime.fromisoformat(queue_job['download_window_expires'])
+                    if datetime.now() > expires:
+                        raise HTTPException(
+                            status_code=410,
+                            detail="Download window expired (1 minute limit). Please resubmit your file."
+                        )
+        
+        # Check processing status
         status = status_manager.get_status(job_id)
         
         if status is None:
             raise HTTPException(status_code=404, detail="Job not found")
         
-        return StatusResponse(**status.to_dict())
+        response_data = status.to_dict()
+        response_data['queue_position'] = 0
+        response_data['jobs_ahead'] = 0
+        
+        return StatusResponse(**response_data)
         
     except HTTPException:
         raise
@@ -315,6 +420,8 @@ async def get_job_status(job_id: str):
 async def download_pdf(job_id: str):
     """
     Download processed PDF file.
+    File is deleted immediately after successful response (200 OK).
+    1-minute download window from job completion.
     
     Args:
         job_id: Job identifier
@@ -323,6 +430,19 @@ async def download_pdf(job_id: str):
         FileResponse with processed PDF
     """
     try:
+        # Check queue status
+        queue_job = queue_manager.get_job(job_id)
+        
+        if queue_job:
+            # Check if download window expired
+            if queue_job.get('download_window_expires'):
+                expires = datetime.fromisoformat(queue_job['download_window_expires'])
+                if datetime.now() > expires:
+                    raise HTTPException(
+                        status_code=410,
+                        detail="Download window expired (1 minute limit). File has been deleted. Please resubmit."
+                    )
+        
         # Check job status
         status = status_manager.get_status(job_id)
         
@@ -336,14 +456,21 @@ async def download_pdf(job_id: str):
             )
         
         if not status.result_path or not os.path.exists(status.result_path):
-            raise HTTPException(status_code=404, detail="Result file not found")
+            raise HTTPException(status_code=404, detail="Result file not found. May have been deleted.")
         
-        # Return file
-        return FileResponse(
+        # Create response
+        response = FileResponse(
             path=status.result_path,
             media_type="application/pdf",
             filename=f"watermarked_{job_id}.pdf"
         )
+        
+        # Mark as downloaded and schedule immediate cleanup
+        # File will be deleted by background cleanup thread
+        queue_manager.mark_downloaded(job_id)
+        status_manager.delete_job(job_id)
+        
+        return response
         
     except HTTPException:
         raise
