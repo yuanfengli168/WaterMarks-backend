@@ -184,8 +184,8 @@ def process_queued_job(job: dict):
     job_id = job['job_id']
     
     try:
-        # Create status tracking
-        status_manager.create_job(job_id, "Starting processing from queue")
+        # Update status to processing (job already created in upload endpoint)
+        status_manager.update_status(job_id, status="processing", message="Starting processing from queue")
         
         def status_callback(status):
             status_manager.update_status(job_id, status=status)

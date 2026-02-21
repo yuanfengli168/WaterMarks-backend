@@ -125,6 +125,8 @@ python app.py
 Or with uvicorn:
 ```bash
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+# if in use, can kill
+lsof -ti :8000 | xargs kill -9 2>/dev/null;
 ```
 
 ## Configuration
