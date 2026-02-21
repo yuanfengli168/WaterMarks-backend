@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: watermarks-backend
+    runtime: python
+    plan: free  # Change to 'starter' for always-on service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DEBUG
+        value: false
+      - key: HOST
+        value: 0.0.0.0
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: RAM_SAFETY_MARGIN
+        value: 0.6
+      - key: ABSOLUTE_MAX_FILE_SIZE
+        value: 104857600  # 100MB for free tier
+      - key: MIN_FREE_RAM_REQUIRED
+        value: 52428800
+      - key: MAX_PARALLEL_WORKERS
+        value: 2
+      - key: DEFAULT_CHUNK_SIZE
+        value: 10
+      - key: WATERMARK_TEXT
+        value: WATERMARK
+      - key: WATERMARK_FONT_SIZE
+        value: 60
+      - key: WATERMARK_OPACITY
+        value: 0.3
+      - key: WATERMARK_ROTATION
+        value: 45
+      - key: JOB_RETENTION_HOURS
+        value: 1
+      - key: MAX_CONCURRENT_JOBS
+        value: 5
+      - key: CORS_ORIGINS
+        value: https://yourusername.github.io,http://localhost:3000,http://localhost:5173
+        # IMPORTANT: Update this with your actual GitHub Pages URL
+    healthCheckPath: /health

@@ -1,18 +1,19 @@
-# WaterMarks Backend
+# PDF Watermark Backend API
 
-PDF Watermarking Service - Split PDFs into chunks, add colored watermarks in parallel, and merge back together.
+A FastAPI-based backend service for adding watermarks to PDF files with chunking, parallel processing, and real-time status tracking.
 
 ## Features
 
-- ✅ Pre-upload file size validation
-- ✅ PDF structure validation (corrupted, encrypted detection)
-- ✅ Automatic PDF splitting into configurable chunks
-- ✅ Parallel watermark processing for speed
-- ✅ Different colored watermarks per chunk
-- ✅ Real-time job status tracking (uploading → splitting → adding_watermarks → finished)
-- ✅ Comprehensive error handling with human-readable messages
-- ✅ Memory-safe (prevents server crashes from large files)
-- ✅ CORS-enabled for frontend integration
+- ✅ **Pre-upload size checking** - Validate file size before upload to prevent server crashes
+- ✅ **RAM-aware processing** - Rejects files that would exceed available memory (70% safety margin)
+- ✅ **Parallel watermarking** - Splits PDFs into chunks and processes them concurrently
+- ✅ **Real-time status tracking** - 4-phase progress updates (uploading → splitting → adding_watermarks → finished)
+- ✅ **PDF validation** - Detects corrupted, encrypted, or fake PDFs
+- ✅ **Error handling** - Human-readable error messages for frontend display
+- ✅ **Background processing** - Non-blocking API with job-based workflow
+- ✅ **Health monitoring** - Memory stats and uptime endpoints for deployment
+- ✅ **CORS-enabled** - Configured for GitHub Pages and custom domains
+- ✅ **Fully tested** - 73 automated tests covering all functionality
 
 ## Architecture
 
@@ -128,16 +129,33 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 ## Configuration
 
-Edit `.env` or `config.py` for:
+Key environment variables in `.env`:
 
-- `RAM_SAFETY_MARGIN` - Percentage of RAM to use (default: 0.7)
-- `ABSOLUTE_MAX_FILE_SIZE` - Hard limit in bytes (default: 500MB)
-- `MAX_PARALLEL_WORKERS` - Concurrent watermark operations (default: 4)
-- `WATERMARK_TEXT` - Text for watermarks (default: "WATERMARK")
-- `WATERMARK_FONT_SIZE` - Font size (default: 60)
-- `WATERMARK_OPACITY` - Opacity 0-1 (default: 0.3)
-- `WATERMARK_ROTATION` - Rotation angle (default: 45°)
-- `CORS_ORIGINS` - Allowed frontend origins
+```bash
+# File size limits (adjust based on server RAM)
+ABSOLUTE_MAX_FILE_SIZE=524288000  # 500MB for local, 100MB for Render free tier
+RAM_SAFETY_MARGIN=0.7
+MIN_FREE_RAM_REQUIRED=104857600   # 100MB
+
+# Processing
+MAX_PARALLEL_WORKERS=4  # Reduce to 2 for free tier
+DEFAULT_CHUNK_SIZE=10
+MAX_CONCURRENT_JOBS=10  # Reduce to 5 for free tier
+
+# Watermark customization
+WATERMARK_TEXT=WATERMARK
+WATERMARK_FONT_SIZE=60
+WATERMARK_OPACITY=0.3
+WATERMARK_ROTATION=45
+
+# CORS - Add your frontend URLs
+CORS_ORIGINS=http://localhost:3000,https://yourusername.github.io
+
+# Debug mode
+DEBUG=False  # Set to True for development
+```
+
+See [.env.example](.env.example) for all available options and production recommendations.
 
 ## Usage Example
 
@@ -200,49 +218,189 @@ with open('watermarked.pdf', 'wb') as f:
     f.write(response.content)
 ```
 
-## Deployment on Render
+## Quick Start
 
-1. **Push code to GitHub**
+### Local Development
 
-2. **Create new Web Service on Render**
-   - Environment: Python 3
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
+1. **Clone and setup**:
+```bash
+git clone <your-repo-url>
+cd WaterMarks-backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+```
 
-3. **Set Environment Variables**
-   - Add all variables from `.env.example`
-   - Adjust RAM_SAFETY_MARGIN based on Render tier
+2. **Run the server**:
+```bash
+python app.py
+```
 
-4. **Deploy**
+3. **Access the API**:
+   - API: `http://localhost:8000`
+   - Interactive docs: `http://localhost:8000/docs`
+
+### Production Deployment
+
+**Deploy to Render** (recommended for free hosting):
+
+📖 See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive deployment guide including:
+- Step-by-step Render setup instructions
+- Environment variable configuration
+- CORS setup for GitHub Pages
+- Free tier considerations and optimizations
+- Troubleshooting guide
+- Custom domain setup
+
+**Quick deploy with `render.yaml`**:
+```bash
+# 1. Push to GitHub
+git add .
+git commit -m "Deploy to Render"
+git push origin main
+
+# 2. Connect to Render and it will auto-deploy using render.yaml
+```
+
+## Monitoring Endpoints
+
+- `GET /health` - Health check with memory stats and active jobs count
+- `GET /ping` - Simple wake-up endpoint (useful for free tier spin-down management)
+
+## Testing
+
+**Generate Test Files:**
+
+```bash
+# Create 9 different test PDFs (valid, corrupted, encrypted, etc.)
+python tests/generate_test_pdfs.py
+
+# Create large 520MB PDF for stress testing
+python tests/generate_large_pdf.py
+```
+
+**Run Tests:**
+
+```bash
+# Automated test suite (73 tests)
+./run_tests.sh  # Auto-activates venv and runs pytest
+
+# Or manually
+source venv/bin/activate
+pytest -v
+
+# Manual interactive testing
+python tests/manual_test.py
+```
+
+## Frontend Integration
+
+📖 See [FRONTEND_API_DOCUMENTATION.md](FRONTEND_API_DOCUMENTATION.md) for detailed integration guide including:
+- Complete request/response formats
+- Error handling best practices
+- Example code snippets (fetch API)
+- Status polling strategies
+- File download handling
+
+## Workflow
+
+```
+1. Frontend → POST /api/check-size (file_size in bytes)
+   Backend → Validates against available RAM
+   
+2. If accepted:
+   Frontend → POST /api/upload (multipart/form-data with PDF)
+   Backend → Returns job_id, starts background processing
+   
+3. Background processing:
+   - Splits PDF into chunks
+   - Watermarks chunks in parallel (multi-threaded)
+   - Merges chunks back together
+   
+4. Frontend → GET /api/status/{job_id} (poll every 1-2 seconds)
+   Backend → Returns progress: uploading → splitting → adding_watermarks → finished
+   
+5. When finished:
+   Frontend → GET /api/download/{job_id}
+   Backend → Returns watermarked PDF
+   
+6. Cleanup:
+   Frontend → DELETE /api/{job_id}
+   Backend → Removes temp files
+```
 
 ## Error Handling
 
 All errors return human-readable messages:
 
-- **File too large**: "File too large (120MB). Maximum allowed: 300MB"
+- **File too large**: "File too large (120MB). Maximum allowed: 300MB based on available server memory (450MB)"
 - **Corrupted PDF**: "The uploaded PDF is corrupted and cannot be processed."
 - **Encrypted PDF**: "The PDF is password-protected. Please upload an unencrypted file."
 - **Invalid file**: "The uploaded file is not a valid PDF or contains structural errors."
+- **Memory insufficient**: "Server memory insufficient to process this file safely."
+- **Job not found**: "Job not found - it may have been cleaned up or expired."
+
+## Performance Considerations
+
+### Memory Management[config.py](config.py)
+2. **Custom watermark styles**: Modify `create_watermark_overlay()` in [modules/watermark.py](modules/watermark.py)
+3. **New endpoints**: Add to [app.py](app.py) and follow FastAPI routing patterns
+4. **Adjust memory limits**: Modify `RAM_SAFETY_MARGIN` and `ABSOLUTE_MAX_FILE_SIZE` in `.env`
+- Processes chunks concurrently using ThreadPoolExecutor
+- Configurable worker count (adjust for server capacity)
+- Each chunk gets a different colored watermark for visual verification
+
+### Free Tier Recommendations
+When deploying on free hosting (e.g., Render Free with 512MB RAM):
+- Set `ABSOLUTE_MAX_FILE_SIZE=104857600` (100MB)
+- Set `MAX_PARALLEL_WORKERS=2`
+- Set `MAX_CONCURRENT_JOBS=5`
+- Implement frontend wake-up call using `/ping` endpoint to handle cold starts
+
+## Technology Stack
+
+- **FastAPI** - Modern async web framework with auto-generated OpenAPI docs
+- **PyPDF2** - PDF manipulation (split/merge/read)
+- **reportlab** - Watermark generation with custom text, colors, rotation
+- **psutil** - System memory monitoring for RAM-aware processing
+- **Threading** - Parallel chunk processing with ThreadPoolExecutor
+- **Pydantic** - Request/response validation and serialization
+- **pytest** - Testing framework with 73 comprehensive tests
+- **uvicorn/gunicorn** - ASGI server for production deployment
 
 ## Project Structure
 
 ```
-watermarks-backend/
-├── app.py                 # FastAPI application
-├── config.py              # Configuration settings
-├── requirements.txt       # Python dependencies
-├── .env.example          # Environment template
+WaterMarks-backend/
+├── app.py                          # FastAPI application with all endpoints
+├── config.py                       # Configuration settings and environment variables
+├── requirements.txt                # Python dependencies
+├── .env.example                   # Environment template with production notes
+├── render.yaml                     # Render deployment configuration
+├── DEPLOYMENT.md                   # Comprehensive deployment guide
+├── FRONTEND_API_DOCUMENTATION.md   # Frontend integration guide
 ├── modules/
-│   ├── validator.py      # File validation
-│   ├── processor.py      # PDF processing
-│   ├── watermark.py      # Watermark operations
-│   └── status_manager.py # Job tracking
+│   ├── validator.py               # File validation and PDF structure checking
+│   ├── processor.py               # PDF splitting, parallel processing, merging
+│   ├── watermark.py               # Watermark creation and application
+│   └── status_manager.py          # Thread-safe job tracking and status updates
 ├── utils/
-│   └── helpers.py        # Utility functions
-└── temp_files/           # Temporary file storage (auto-created)
-    ├── uploads/
-    ├── processing/
-    └── outputs/
+│   └── helpers.py                 # Utility functions
+├── tests/
+│   ├── test_validator.py          # Unit tests for validator module
+│   ├── test_processor.py          # Unit tests for processor module
+│   ├── test_watermark.py          # Unit tests for watermark module
+│   ├── test_status_manager.py     # Unit tests for status manager
+│   ├── test_integration.py        # End-to-end integration tests
+│   ├── generate_test_pdfs.py      # Generate 9 different test PDFs
+│   ├── generate_large_pdf.py      # Generate 520MB test file
+│   └── manual_test.py             # Interactive CLI testing tool
+├── run_tests.sh                   # Test runner with venv activation
+└── temp_files/                    # Temporary file storage (auto-created)
+    ├── uploads/                   # Uploaded PDFs
+    ├── processing/                # Intermediate chunks
+    └── outputs/                   # Watermarked results
 ```
 
 ## Development

@@ -39,7 +39,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,
+    allow_origins=["*"] if config.DEBUG else config.CORS_ORIGINS,  # Allow all origins in debug mode
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -98,11 +98,36 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "active_jobs": status_manager.count_active_jobs()
-    }
+    """
+    Health check endpoint for monitoring and Render wake-up.
+    Returns 200 OK if server is healthy.
+    """
+    import psutil
+    
+    try:
+        memory = psutil.virtual_memory()
+        return {
+            "status": "healthy",
+            "server": "running",
+            "active_jobs": status_manager.count_active_jobs(),
+            "memory": {
+                "available_mb": round(memory.available / (1024 * 1024), 2),
+                "percent_used": memory.percent
+            },
+            "uptime": "ok"
+        }
+    except Exception as e:
+        return {
+            "status": "degraded",
+            "server": "running",
+            "error": str(e)
+        }
+
+
+@app.get("/ping")
+async def ping():
+    """Simple ping endpoint for wake-up calls"""
+    return {"pong": True, "timestamp": __import__('time').time()}
 
 
 # API Endpoints

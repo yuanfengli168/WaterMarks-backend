@@ -50,7 +50,7 @@ JOB_RETENTION_HOURS = int(os.getenv("JOB_RETENTION_HOURS", "1"))  # Clean up job
 MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "10"))
 
 # CORS Configuration (for frontend)
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,https://*.github.io").split(",")
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = [".pdf"]
