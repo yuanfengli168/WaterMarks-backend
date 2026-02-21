@@ -15,7 +15,7 @@ services:
       - key: RAM_SAFETY_MARGIN
         value: 0.6
       - key: ABSOLUTE_MAX_FILE_SIZE
-        value: 104857600  # 100MB for free tier
+        value: 89128960  # 85MB (safe for 512MB RAM with 4x multiplier)
       - key: MIN_FREE_RAM_REQUIRED
         value: 52428800
       - key: MAX_PARALLEL_WORKERS
