@@ -219,6 +219,15 @@ async def upload_pdf(
         # Start processing in background thread
         def process_in_background():
             try:
+                # Check memory before starting
+                available_ram = get_available_ram()
+                if available_ram < config.MIN_FREE_RAM_REQUIRED:
+                    raise MemoryError(
+                        f"Insufficient memory to process file. "
+                        f"Available: {available_ram / (1024*1024):.1f}MB, "
+                        f"Required: {config.MIN_FREE_RAM_REQUIRED / (1024*1024):.1f}MB"
+                    )
+                
                 def status_callback(status):
                     status_manager.update_status(job_id, status=status)
                 
@@ -238,13 +247,27 @@ async def upload_pdf(
                     result_path=result_path
                 )
                 
+            except MemoryError as e:
+                status_manager.update_status(
+                    job_id,
+                    status="error",
+                    message="Server out of memory",
+                    error=f"Memory exhausted: {str(e)}. Please try a smaller file or upgrade server plan."
+                )
+                cleanup_job_files(job_id)
             except Exception as e:
+                error_msg = str(e)
+                # Check if it's a memory-related error
+                if "memory" in error_msg.lower() or "overflow" in error_msg.lower():
+                    error_msg = f"Processing failed due to insufficient memory. File may be too large for server capacity. Error: {error_msg}"
+                
                 status_manager.update_status(
                     job_id,
                     status="error",
                     message="Processing failed",
-                    error=str(e)
+                    error=error_msg
                 )
+                cleanup_job_files(job_id)
         
         # Start background processing
         thread = threading.Thread(target=process_in_background, daemon=True)
