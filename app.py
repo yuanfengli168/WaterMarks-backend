@@ -78,6 +78,11 @@ class SizeCheckResponse(BaseModel):
     max_allowed_size: int
     available_ram: int
     message: str
+    queue_available: bool  # Can queue accept this job (checks RAM/disk with 3-4x buffer)?
+    queue_message: str  # Queue-specific status message
+    retry_after_seconds: Optional[int] = None  # If queue full, retry after X seconds
+    queue_count: int  # Current jobs in queue
+    active_jobs: int  # Currently processing jobs
 
 
 class UploadResponse(BaseModel):
@@ -275,20 +280,49 @@ def process_queued_job(job: dict):
 
 # API Endpoints
 @app.post("/api/check-size", response_model=SizeCheckResponse)
-async def check_file_size(request: SizeCheckRequest):
+async def check_file_size(
+    request: SizeCheckRequest,
+    response: Response,
+    session_id: Optional[str] = Cookie(default=None)
+):
     """
-    Pre-upload size check endpoint.
-    Frontend calls this before uploading to verify file size is acceptable.
+    Pre-upload check endpoint (enhanced with queue capacity check).
+    Checks BOTH file size AND queue capacity BEFORE upload starts.
+    Uses 3-4x resource multipliers to ensure safe concurrent processing.
     
     Args:
         request: SizeCheckRequest with file_size in bytes
+        session_id: User session cookie
         
     Returns:
-        SizeCheckResponse with allowed status and limits
+        SizeCheckResponse with size check + queue status (with 3-4x safety buffer)
     """
     try:
-        result = check_size_allowance(request.file_size)
-        return SizeCheckResponse(**result)
+        # Get or create session
+        session = get_or_create_session(session_id)
+        response.set_cookie(key="session_id", value=session, httponly=True, max_age=86400)
+        
+        # Check file size limits
+        size_result = check_size_allowance(request.file_size)
+        
+        # Check queue capacity with 3-4x resource multipliers
+        queue_available, queue_msg, retry_info = queue_manager.can_accept_job(session, request.file_size)
+        
+        # Get queue stats
+        usage = queue_manager.get_active_resource_usage()
+        
+        # Combined result: both size and queue must be OK
+        return SizeCheckResponse(
+            allowed=size_result["allowed"] and queue_available,
+            max_allowed_size=size_result["max_allowed_size"],
+            available_ram=size_result["available_ram"],
+            message=size_result["message"] if not size_result["allowed"] else queue_msg,
+            queue_available=queue_available,
+            queue_message=queue_msg,
+            retry_after_seconds=retry_info["retry_after_seconds"] if retry_info else None,
+            queue_count=queue_manager.get_queue_count(),
+            active_jobs=usage["active_count"]
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error checking file size: {str(e)}")
 
