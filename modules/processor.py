@@ -27,7 +27,8 @@ class ChunkInfo:
 def split_pdf_into_chunks(
     pdf_path: str,
     chunk_size: int,
-    output_dir: str
+    output_dir: str,
+    status_callback=None
 ) -> List[ChunkInfo]:
     """
     Split PDF into chunks based on chunk size.
@@ -36,6 +37,7 @@ def split_pdf_into_chunks(
         pdf_path: Path to input PDF
         chunk_size: Maximum pages per chunk
         output_dir: Directory to save chunk files
+        status_callback: Optional callback for progress updates (status, progress)
         
     Returns:
         List of ChunkInfo objects with metadata
@@ -57,9 +59,17 @@ def split_pdf_into_chunks(
         chunks = []
         chunk_id = 0
         
-        # Split into chunks
+        # Calculate how many chunks we'll have
+        total_chunks = (total_pages + actual_chunk_size - 1) // actual_chunk_size
+        
+        # Split into chunks (progress: 1-30%)
         for start_page in range(0, total_pages, actual_chunk_size):
             end_page = min(start_page + actual_chunk_size, total_pages)
+            
+            # Report progress at chunk start (sub-progress: 0%)
+            if status_callback and total_chunks > 1:
+                progress = 1 + int(chunk_id / total_chunks * 29 * 0.33)  # Start of chunk
+                status_callback("splitting", progress=progress)
             
             # Create chunk file
             chunk_filename = f"chunk_{chunk_id:04d}.pdf"
@@ -69,6 +79,11 @@ def split_pdf_into_chunks(
             writer = PdfWriter()
             for page_num in range(start_page, end_page):
                 writer.add_page(reader.pages[page_num])
+            
+            # Report progress at chunk middle (sub-progress: 50%)
+            if status_callback and total_chunks > 1:
+                progress = 1 + int((chunk_id + 0.5) / total_chunks * 29)  # Middle of chunk
+                status_callback("splitting", progress=progress)
             
             with open(chunk_path, 'wb') as output_file:
                 writer.write(output_file)
@@ -83,6 +98,11 @@ def split_pdf_into_chunks(
                 color=get_color_for_chunk(chunk_id)
             )
             chunks.append(chunk)
+            
+            # Report progress at chunk end (sub-progress: 100%)
+            if status_callback:
+                progress = 1 + int((chunk_id + 1) / total_chunks * 29)  # End of chunk
+                status_callback("splitting", progress=progress)
             
             chunk_id += 1
         
@@ -131,7 +151,8 @@ def process_single_chunk(chunk: ChunkInfo, output_dir: str) -> ChunkInfo:
 def parallel_watermark_chunks(
     chunks: List[ChunkInfo],
     output_dir: str,
-    max_workers: int = None
+    max_workers: int = None,
+    status_callback=None
 ) -> List[ChunkInfo]:
     """
     Process multiple chunks in parallel, adding watermarks.
@@ -140,6 +161,7 @@ def parallel_watermark_chunks(
         chunks: List of ChunkInfo objects
         output_dir: Directory to save watermarked chunks
         max_workers: Maximum number of parallel workers
+        status_callback: Optional callback for progress updates (status, progress)
         
     Returns:
         List of processed ChunkInfo objects
@@ -156,6 +178,8 @@ def parallel_watermark_chunks(
         
         # Process chunks in parallel
         processed_chunks = []
+        total_chunks = len(chunks)
+        completed_count = 0
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all chunks for processing
@@ -164,12 +188,18 @@ def parallel_watermark_chunks(
                 for chunk in chunks
             }
             
-            # Collect results as they complete
+            # Collect results as they complete (progress: 31-79%)
             for future in as_completed(future_to_chunk):
                 chunk = future_to_chunk[future]
                 try:
                     processed_chunk = future.result()
                     processed_chunks.append(processed_chunk)
+                    completed_count += 1
+                    
+                    # Report progress after each chunk completes
+                    if status_callback:
+                        progress = 31 + int(completed_count / total_chunks * 48)  # 31-79%
+                        status_callback("adding_watermarks", progress=progress)
                     
                     # Check for errors
                     if processed_chunk.status == "error":
@@ -268,17 +298,17 @@ def process_pdf_with_watermarks(
         os.makedirs(watermarked_dir, exist_ok=True)
         os.makedirs(config.OUTPUT_DIR, exist_ok=True)
         
-        # Step 1: Split into chunks
+        # Step 1: Split into chunks (progress: 1-30%)
         if status_callback:
-            status_callback("splitting")
+            status_callback("splitting", progress=1)
         
-        chunks = split_pdf_into_chunks(input_pdf_path, chunk_size, chunks_dir)
+        chunks = split_pdf_into_chunks(input_pdf_path, chunk_size, chunks_dir, status_callback=status_callback)
         
-        # Step 2: Add watermarks in parallel
+        # Step 2: Add watermarks in parallel (progress: 31-79%)
         if status_callback:
-            status_callback("adding_watermarks")
+            status_callback("adding_watermarks", progress=31)
         
-        processed_chunks = parallel_watermark_chunks(chunks, watermarked_dir)
+        processed_chunks = parallel_watermark_chunks(chunks, watermarked_dir, status_callback=status_callback)
         
         # Step 3: Merge chunks
         if status_callback:
