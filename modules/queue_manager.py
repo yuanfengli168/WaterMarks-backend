@@ -260,23 +260,54 @@ class JobQueueManager:
             return avg_time
         return 60  # Default 1 minute
     
-    def pop_next_job(self) -> Optional[dict]:
+    def get_active_resource_usage(self) -> dict:
         """
-        Get next job from queue if memory available.
+        Calculate total RAM and disk usage by active jobs.
+        Active jobs include: processing, splitting, adding_watermarks, merging.
         
         Returns:
-            Job dict or None if no job ready
+            dict with ram_used, disk_used, active_count
         """
         with self.lock:
-            # Check if already processing a job
-            if self.get_processing_count() > 0:
-                return None  # Only process one at a time
+            active_statuses = ['processing', 'splitting', 'adding_watermarks', 'merging']
+            active_jobs = [
+                j for j in self.jobs.values()
+                if j.get('status') in active_statuses
+            ]
             
-            # Check memory
+            # Estimate resources used by active jobs
+            total_ram = sum(
+                int(j.get('file_size', 0) * config.RAM_USAGE_MULTIPLIER)
+                for j in active_jobs
+            )
+            total_disk = sum(
+                int(j.get('file_size', 0) * config.DISK_USAGE_MULTIPLIER)
+                for j in active_jobs
+            )
+            
+            return {
+                'ram_used': total_ram,
+                'disk_used': total_disk,
+                'active_count': len(active_jobs)
+            }
+    
+    def pop_next_job(self) -> Optional[dict]:
+        """
+        Get next job from queue if resources available (supports concurrent processing).
+        Uses 4x RAM and 2x disk multipliers to estimate resource needs.
+        
+        Returns:
+            Job dict or None if no job ready or insufficient resources
+        """
+        with self.lock:
             import psutil
+            
+            # Get current resource usage by active jobs
+            usage = self.get_active_resource_usage()
+            
+            # Check available resources
             memory = psutil.virtual_memory()
-            if memory.available < 300 * 1024 * 1024:  # Need 300MB free
-                return None
+            disk = shutil.disk_usage(config.TEMP_DIR)
             
             # Get oldest queued job
             queued_jobs = [
@@ -289,6 +320,27 @@ class JobQueueManager:
             
             queued_jobs.sort(key=lambda x: x.get('queued_at', ''))
             next_job = queued_jobs[0]
+            
+            # Estimate resources needed for this job
+            estimated_ram = int(next_job['file_size'] * config.RAM_USAGE_MULTIPLIER)
+            estimated_disk = int(next_job['file_size'] * config.DISK_USAGE_MULTIPLIER)
+            
+            # Check if we can start this job without exceeding buffers
+            ram_after = memory.available - estimated_ram
+            disk_after = disk.free - estimated_disk
+            
+            # Must maintain minimum buffers
+            if ram_after < config.MIN_RAM_BUFFER:
+                print(f"⏸️  [QUEUE] Cannot start job {next_job['job_id']}: would leave only {ram_after / (1024*1024):.1f}MB RAM (need {config.MIN_RAM_BUFFER / (1024*1024):.0f}MB buffer)")
+                return None
+            
+            if disk_after < config.MIN_DISK_BUFFER:
+                print(f"⏸️  [QUEUE] Cannot start job {next_job['job_id']}: would leave only {disk_after / (1024*1024):.1f}MB disk (need {config.MIN_DISK_BUFFER / (1024*1024):.0f}MB buffer)")
+                return None
+            
+            # Safe to start this job!
+            print(f"🚀 [QUEUE] Starting job {next_job['job_id']} (estimated: {estimated_ram / (1024*1024):.1f}MB RAM, {estimated_disk / (1024*1024):.1f}MB disk)")
+            print(f"📊 [QUEUE] Active jobs: {usage['active_count']}, RAM after: {ram_after / (1024*1024):.1f}MB, Disk after: {disk_after / (1024*1024):.1f}MB")
             
             # Mark as processing
             next_job['status'] = 'processing'

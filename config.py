@@ -21,6 +21,12 @@ RECHECK_SIZE_ON_UPLOAD = os.getenv("RECHECK_SIZE_ON_UPLOAD", "True").lower() == 
 MAX_PARALLEL_WORKERS = int(os.getenv("MAX_PARALLEL_WORKERS", 4))  # Max concurrent watermark operations
 DEFAULT_CHUNK_SIZE = int(os.getenv("DEFAULT_CHUNK_SIZE", 10))  # Default pages per chunk
 
+# Concurrent Processing Resource Estimation
+RAM_USAGE_MULTIPLIER = float(os.getenv("RAM_USAGE_MULTIPLIER", "4.0"))  # Estimate 4x file size for RAM usage
+DISK_USAGE_MULTIPLIER = float(os.getenv("DISK_USAGE_MULTIPLIER", "2.0"))  # Estimate 2x file size for disk usage
+MIN_RAM_BUFFER = int(os.getenv("MIN_RAM_BUFFER", 100 * 1024 * 1024))  # Keep 100MB RAM buffer for concurrent jobs
+MIN_DISK_BUFFER = int(os.getenv("MIN_DISK_BUFFER", 150 * 1024 * 1024))  # Keep 150MB disk buffer
+
 # Watermark Configuration
 WATERMARK_TEXT = os.getenv("WATERMARK_TEXT", "WATERMARK")
 WATERMARK_FONT_SIZE = int(os.getenv("WATERMARK_FONT_SIZE", 60))
