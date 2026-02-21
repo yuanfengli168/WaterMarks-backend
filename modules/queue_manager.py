@@ -96,11 +96,8 @@ class JobQueueManager:
             (can_accept, message, retry_info)
         """
         with self.lock:
-            # Check if user already has a job
-            existing_job = self.get_user_job(session_id)
-            if existing_job:
-                status = existing_job.get('status', 'unknown')
-                return False, f"You already have a job {status}. Please wait for it to complete.", None
+            # REMOVED: One job per user restriction
+            # Users can now upload multiple files concurrently
             
             # Check disk space (dynamic limit)
             has_space, space_msg = self.check_disk_space(file_size)

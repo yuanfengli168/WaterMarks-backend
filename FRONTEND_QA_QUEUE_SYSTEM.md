@@ -516,7 +516,7 @@ A: First upload to complete wins the spot. Others get 503 and retry. This is fai
 A: No. Always re-check to get current queue state. Queue can change rapidly.
 
 **Q: Can one user have multiple uploads waiting?**
-A: No. Backend tracks by session - one active job per user. If user already has a job, `can_accept_job()` returns false.
+A: Yes! Users can upload multiple files concurrently. Each upload is treated independently and queued based on available resources.
 
 ---
 

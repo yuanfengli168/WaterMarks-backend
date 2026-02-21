@@ -491,7 +491,7 @@ Backend automatically handles:
 - ✅ FIFO queue order (oldest first)
 - ✅ Concurrent processing (when resources allow)
 - ✅ 3-4x resource safety buffer
-- ✅ Session tracking (one job per user)
+- ✅ Session tracking (multiple jobs per user allowed)
 - ✅ Automatic cleanup after 1 hour
 
 Frontend just needs to:
