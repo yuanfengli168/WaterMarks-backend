@@ -571,14 +571,21 @@ async def cleanup_job(job_id: str):
         Success message
     """
     try:
-        if not status_manager.job_exists(job_id):
+        # Check if job exists in either manager
+        exists_in_status = status_manager.job_exists(job_id)
+        exists_in_queue = queue_manager.get_job(job_id) is not None
+        
+        if not exists_in_status and not exists_in_queue:
             raise HTTPException(status_code=404, detail="Job not found")
         
         # Clean up files
         cleanup_job_files(job_id)
         
-        # Remove from status manager
-        status_manager.delete_job(job_id)
+        # Remove from both managers
+        if exists_in_status:
+            status_manager.delete_job(job_id)
+        if exists_in_queue:
+            queue_manager.delete_job(job_id)
         
         return {"message": f"Job {job_id} cleaned up successfully"}
         
