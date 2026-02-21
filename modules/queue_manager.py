@@ -217,7 +217,7 @@ class JobQueueManager:
             avg_time = 120  # Default 2 minutes
         
         # Jobs ahead × average time
-        return (position - 1) * avg_time
+        return (position) * avg_time
     
     def get_average_processing_time(self) -> Optional[int]:
         """Calculate average processing time from recent completed jobs"""
