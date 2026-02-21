@@ -39,6 +39,9 @@ temp_files/
 *.pdf
 *.log
 
+# Queue runtime data
+queue.json
+
 # OS
 .DS_Store
 Thumbs.db
