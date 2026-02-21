@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import psutil
 
 import config
 from modules.validator import (
@@ -220,7 +221,8 @@ async def upload_pdf(
         def process_in_background():
             try:
                 # Check memory before starting
-                available_ram = get_available_ram()
+                memory = psutil.virtual_memory()
+                available_ram = memory.available
                 if available_ram < config.MIN_FREE_RAM_REQUIRED:
                     raise MemoryError(
                         f"Insufficient memory to process file. "
