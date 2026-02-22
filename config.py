@@ -13,6 +13,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 RAM_SAFETY_MARGIN = float(os.getenv("RAM_SAFETY_MARGIN", "0.7"))  # Use 70% of available RAM as max
 ABSOLUTE_MAX_FILE_SIZE = int(os.getenv("ABSOLUTE_MAX_FILE_SIZE", 85 * 1024 * 1024))  # 85MB hard limit (safe for 512MB RAM)
 MIN_FREE_RAM_REQUIRED = int(os.getenv("MIN_FREE_RAM_REQUIRED", 100 * 1024 * 1024))  # Keep 100MB free
+CONTAINER_RAM_LIMIT = int(os.getenv("CONTAINER_RAM_LIMIT", 0))  # Fallback if cgroup unreadable (0 = auto-detect from cgroup)
 
 # Size Re-check on Upload
 RECHECK_SIZE_ON_UPLOAD = os.getenv("RECHECK_SIZE_ON_UPLOAD", "True").lower() == "true"
