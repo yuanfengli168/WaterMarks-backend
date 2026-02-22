@@ -15,7 +15,7 @@ services:
       - key: RAM_SAFETY_MARGIN
         value: 0.6
       - key: ABSOLUTE_MAX_FILE_SIZE
-        value: 89128960  # 85MB (safe for 512MB RAM with 4x multiplier)
+        value: 41943040  # 40MB (safe for 512MB RAM with 8x multiplier)
       - key: CONTAINER_RAM_LIMIT
         value: 471859200  # 450MB fallback (if cgroup detection fails)
       - key: MIN_FREE_RAM_REQUIRED

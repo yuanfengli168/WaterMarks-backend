@@ -11,7 +11,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 # File Size Limits
 RAM_SAFETY_MARGIN = float(os.getenv("RAM_SAFETY_MARGIN", "0.7"))  # Use 70% of available RAM as max
-ABSOLUTE_MAX_FILE_SIZE = int(os.getenv("ABSOLUTE_MAX_FILE_SIZE", 85 * 1024 * 1024))  # 85MB hard limit (safe for 512MB RAM)
+ABSOLUTE_MAX_FILE_SIZE = int(os.getenv("ABSOLUTE_MAX_FILE_SIZE", 40 * 1024 * 1024))  # 40MB hard limit (safe for 512MB RAM)
 MIN_FREE_RAM_REQUIRED = int(os.getenv("MIN_FREE_RAM_REQUIRED", 100 * 1024 * 1024))  # Keep 100MB free
 CONTAINER_RAM_LIMIT = int(os.getenv("CONTAINER_RAM_LIMIT", 0))  # Fallback if cgroup unreadable (0 = auto-detect from cgroup)
 
@@ -23,7 +23,7 @@ MAX_PARALLEL_WORKERS = int(os.getenv("MAX_PARALLEL_WORKERS", 4))  # Max concurre
 DEFAULT_CHUNK_SIZE = int(os.getenv("DEFAULT_CHUNK_SIZE", 10))  # Default pages per chunk
 
 # Concurrent Processing Resource Estimation
-RAM_USAGE_MULTIPLIER = float(os.getenv("RAM_USAGE_MULTIPLIER", "4.0"))  # Estimate 4x file size for RAM usage
+RAM_USAGE_MULTIPLIER = float(os.getenv("RAM_USAGE_MULTIPLIER", "8.0"))  # Estimate 8x file size for RAM usage (accounts for merging phase spike)
 DISK_USAGE_MULTIPLIER = float(os.getenv("DISK_USAGE_MULTIPLIER", "2.0"))  # Estimate 2x file size for disk usage
 MIN_RAM_BUFFER = int(os.getenv("MIN_RAM_BUFFER", 100 * 1024 * 1024))  # Keep 100MB RAM buffer for concurrent jobs
 MIN_DISK_BUFFER = int(os.getenv("MIN_DISK_BUFFER", 150 * 1024 * 1024))  # Keep 150MB disk buffer
