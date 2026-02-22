@@ -384,11 +384,14 @@ async def upload_pdf(
         file_size = len(content)
         print(f"📖 [UPLOAD] File read complete. Size: {file_size} bytes")
         
-        # Check if queue can accept this job
+        # Check if queue can accept this job (accounting for file already in memory)
         print(f"🔍 [UPLOAD] Checking if queue can accept job (session: {session}, size: {file_size})")
-        can_accept, message, retry_info = queue_manager.can_accept_job(session, file_size)
+        # NOTE: File is already in RAM at this point, so subtract it from available RAM during check
+        can_accept, message, retry_info = queue_manager.can_accept_job(session, file_size, file_in_memory=True)
         
         if not can_accept:
+            # Release memory before rejecting
+            del content
             # Server busy - return 503 with retry info
             if retry_info:
                 retry_time = datetime.now() + timedelta(seconds=retry_info['retry_after_seconds'])

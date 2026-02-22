@@ -11,113 +11,28 @@ from typing import Dict, List, Optional, Tuple
 import psutil
 import config
 
-# Global variables for container memory tracking
-_CONTAINER_LIMIT = None
-_BASELINE_USAGE = None
-_LIMIT_DETECTED = False
-
-
-def detect_container_memory_limit() -> int:
-    """
-    Detect actual container memory limit from cgroup (Linux containers).
-    
-    Tries cgroup v2 first, then v1, then falls back to env var.
-    
-    Returns:
-        Container memory limit in bytes, or 0 if not in container
-    """
-    # Try cgroup v2 (newer Docker, Kubernetes)
-    try:
-        with open('/sys/fs/cgroup/memory.max', 'r') as f:
-            value = f.read().strip()
-            if value != 'max':
-                limit = int(value)
-                print(f"🐳 [MEMORY] Detected cgroup v2 limit: {limit / (1024*1024):.0f}MB")
-                return limit
-    except (FileNotFoundError, PermissionError, ValueError):
-        pass
-    
-    # Try cgroup v1 (older Docker)
-    try:
-        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
-            limit = int(f.read().strip())
-            # Filter out unrealistic values (some systems return huge numbers)
-            if limit < (1024 ** 4):  # Less than 1TB = probably real
-                print(f"🐳 [MEMORY] Detected cgroup v1 limit: {limit / (1024*1024):.0f}MB")
-                return limit
-    except (FileNotFoundError, PermissionError, ValueError):
-        pass
-    
-    # Fall back to environment variable
-    if config.CONTAINER_RAM_LIMIT > 0:
-        print(f"🐳 [MEMORY] Using env var limit: {config.CONTAINER_RAM_LIMIT / (1024*1024):.0f}MB")
-        return config.CONTAINER_RAM_LIMIT
-    
-    print("💻 [MEMORY] No container limit detected (running on host)")
-    return 0
-
-
-def get_baseline_memory_usage() -> int:
-    """
-    Get current process memory usage as baseline.
-    
-    Returns:
-        RSS (Resident Set Size) in bytes
-    """
-    rss = psutil.Process().memory_info().rss
-    print(f"📊 [MEMORY] Baseline process usage: {rss / (1024*1024):.1f}MB")
-    return rss
-
-
-def initialize_memory_tracking():
-    """
-    Initialize memory tracking on first call.
-    Detects container limit and measures baseline usage.
-    """
-    global _CONTAINER_LIMIT, _BASELINE_USAGE, _LIMIT_DETECTED
-    
-    if _LIMIT_DETECTED:
-        return
-    
-    _LIMIT_DETECTED = True
-    _CONTAINER_LIMIT = detect_container_memory_limit()
-    _BASELINE_USAGE = get_baseline_memory_usage()
-    
-    if _CONTAINER_LIMIT > 0:
-        available = _CONTAINER_LIMIT - _BASELINE_USAGE
-        print(f"✅ [MEMORY] Available for jobs: {available / (1024*1024):.0f}MB (limit: {_CONTAINER_LIMIT / (1024*1024):.0f}MB - baseline: {_BASELINE_USAGE / (1024*1024):.1f}MB)")
-    else:
-        print(f"✅ [MEMORY] Running on host, using psutil for memory checks")
+# Hardcoded container limit for Render (512MB container, use 450MB to be safe)
+RENDER_CONTAINER_LIMIT = 450 * 1024 * 1024  # 450MB in bytes
 
 
 def get_effective_available_ram() -> int:
     """
-    Get effective available RAM considering container limits and baseline usage.
+    Get effective available RAM considering Render's 512MB container limit.
     
-    On containerized environments (Docker, Render), psutil reports the host's RAM,
-    not the container's limit. This function:
-    1. Detects container limit from cgroup or env var
-    2. Subtracts baseline process usage
-    3. Returns realistic available RAM for jobs
+    Hardcoded to 450MB limit (leaving 62MB for system overhead).
+    Calculates: 450MB - current_process_usage = available for jobs
     
     Returns:
         Effective available RAM in bytes
     """
-    initialize_memory_tracking()
+    # Get current process memory usage
+    current_usage = psutil.Process().memory_info().rss
     
-    memory = psutil.virtual_memory()
+    # Available = limit - current usage
+    available = RENDER_CONTAINER_LIMIT - current_usage
     
-    # If in container, calculate based on container limit
-    if _CONTAINER_LIMIT and _CONTAINER_LIMIT > 0:
-        # Current process usage
-        current_usage = psutil.Process().memory_info().rss
-        # Available = limit - current usage
-        container_available = _CONTAINER_LIMIT - current_usage
-        # Cap at 0 (can't be negative)
-        return max(0, container_available)
-    
-    # Not in container, use psutil's value (running on host/local)
-    return memory.available
+    # Cap at 0 (can't be negative)
+    return max(0, available)
 
 
 class JobQueueManager:
@@ -193,13 +108,14 @@ class JobQueueManager:
         except Exception as e:
             return False, f"Error checking disk space: {str(e)}"
     
-    def can_accept_job(self, session_id: str, file_size: int) -> Tuple[bool, str, Optional[dict]]:
+    def can_accept_job(self, session_id: str, file_size: int, file_in_memory: bool = False) -> Tuple[bool, str, Optional[dict]]:
         """
         Check if job can be accepted.
         
         Args:
             session_id: User session identifier
             file_size: Size of file in bytes
+            file_in_memory: If True, file is already loaded in RAM (during upload check)
             
         Returns:
             (can_accept, message, retry_info)
@@ -220,6 +136,11 @@ class JobQueueManager:
             
             # Check memory (using container-aware RAM detection)
             available_ram = get_effective_available_ram()
+            
+            # If file is already in memory (during upload), account for it
+            if file_in_memory:
+                available_ram -= file_size
+            
             if available_ram < config.MIN_FREE_RAM_REQUIRED:
                 retry_seconds = self.estimate_memory_available_time()
                 return False, "Server memory insufficient. Please try again shortly.", {
