@@ -224,14 +224,15 @@ render logs -s your-service-name --tail
 
 ### For Free Tier (512 MB RAM)
 ```
-ABSOLUTE_MAX_FILE_SIZE=104857600  # 100MB max
+ABSOLUTE_MAX_FILE_SIZE=5242880    # 5MB max (safe with 3 concurrent jobs)
 RAM_SAFETY_MARGIN=0.6             # Use 60% of RAM
 MAX_PARALLEL_WORKERS=2            # Limit parallelism
+MAX_CONCURRENT_JOBS=3             # Process up to 3 jobs at once
 ```
 
-### For Starter Tier (512 MB RAM, always on)
+### For Starter Tier (1GB+ RAM)
 ```
-ABSOLUTE_MAX_FILE_SIZE=209715200  # 200MB max
+ABSOLUTE_MAX_FILE_SIZE=15728640  # 15MB max
 RAM_SAFETY_MARGIN=0.7             # Use 70% of RAM
 MAX_PARALLEL_WORKERS=3
 ```

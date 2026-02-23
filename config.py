@@ -11,7 +11,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 # File Size Limits
 RAM_SAFETY_MARGIN = float(os.getenv("RAM_SAFETY_MARGIN", "0.7"))  # Use 70% of available RAM as max
-ABSOLUTE_MAX_FILE_SIZE = int(os.getenv("ABSOLUTE_MAX_FILE_SIZE", 40 * 1024 * 1024))  # 40MB hard limit (safe for 512MB RAM)
+ABSOLUTE_MAX_FILE_SIZE = int(os.getenv("ABSOLUTE_MAX_FILE_SIZE", 5 * 1024 * 1024))  # 5MB hard limit (safe for 512MB RAM with 3 concurrent jobs)
 MIN_FREE_RAM_REQUIRED = int(os.getenv("MIN_FREE_RAM_REQUIRED", 100 * 1024 * 1024))  # Keep 100MB free
 CONTAINER_RAM_LIMIT = int(os.getenv("CONTAINER_RAM_LIMIT", 0))  # Fallback if cgroup unreadable (0 = auto-detect from cgroup)
 

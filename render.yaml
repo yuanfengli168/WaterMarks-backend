@@ -15,7 +15,7 @@ services:
       - key: RAM_SAFETY_MARGIN
         value: 0.6
       - key: ABSOLUTE_MAX_FILE_SIZE
-        value: 41943040  # 40MB (safe for 512MB RAM with 8x multiplier)
+        value: 5242880 # 5MB (safe for 512MB RAM with 8x multiplier)
       - key: CONTAINER_RAM_LIMIT
         value: 471859200  # 450MB fallback (if cgroup detection fails)
       - key: MIN_FREE_RAM_REQUIRED
@@ -35,7 +35,7 @@ services:
       - key: JOB_RETENTION_HOURS
         value: 1
       - key: MAX_CONCURRENT_JOBS
-        value: 5
+        value: 3
       - key: CORS_ORIGINS
         value: https://yourusername.github.io,http://localhost:3000,http://localhost:5173
         # IMPORTANT: Update this with your actual GitHub Pages URL

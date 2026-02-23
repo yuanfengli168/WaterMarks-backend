@@ -7,9 +7,9 @@ Before deploying your PDF Watermark Backend to Render, ensure you've completed t
 ### 1. Environment Configuration ✓
 - [x] `.env.example` created with production settings
 - [ ] Review and adjust `ABSOLUTE_MAX_FILE_SIZE` for your Render tier:
-  - Free tier (512MB RAM): 100MB (104857600 bytes)
-  - Starter tier (512MB RAM): 200MB (209715200 bytes)  
-  - Standard tier (2GB RAM): 500MB+ (524288000 bytes)
+  - Free tier (512MB RAM): 5MB (5242880 bytes) - safe with 3 concurrent jobs
+  - Starter tier (1GB+ RAM): 10-15MB (10485760-15728640 bytes)
+  - Standard tier (2GB+ RAM): 20MB+ (20971520 bytes)
 - [ ] Update `CORS_ORIGINS` with your GitHub Pages URL:
   - Example: `https://yourusername.github.io`
   - Or use wildcard: `https://*.github.io` (already in config)
@@ -210,8 +210,8 @@ await uploadFile();
 
 **For Free Tier:**
 - Set `MAX_PARALLEL_WORKERS=2` (not 4)
-- Set `ABSOLUTE_MAX_FILE_SIZE=104857600` (100MB)
-- Set `MAX_CONCURRENT_JOBS=5` (not 10)
+- Set `ABSOLUTE_MAX_FILE_SIZE=5242880` (5MB)
+- Set `MAX_CONCURRENT_JOBS=3` (safe with 5MB files)
 - Consider disabling heavy logging
 
 **For Higher Tiers:**

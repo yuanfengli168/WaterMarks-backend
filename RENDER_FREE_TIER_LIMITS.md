@@ -15,11 +15,11 @@ Processing a PDF uses **3-4x the file size** in RAM:
 
 | File Size | RAM Used During Processing | Safe on Free Tier? |
 |-----------|----------------------------|-------------------|
-| 10MB      | ~40MB                      | ✅ Always safe     |
-| 25MB      | ~100MB                     | ✅ Safe           |
-| 50MB      | ~200MB                     | ⚠️ Risky          |
-| 75MB      | ~300MB                     | ❌ Will crash     |
-| 100MB     | ~400MB                     | ❌ Will crash     |
+| 2MB       | ~30MB                      | ✅ Always safe     |
+| 5MB       | ~75MB                      | ✅ Safe           |
+| 10MB      | ~150MB                     | ⚠️ Risky (single)  |
+| 15MB      | ~225MB                     | ❌ Will crash     |
+| 20MB+     | ~300MB+                    | ❌ Will crash     |
 
 **Why?** During processing, the backend holds in memory:
 - Original PDF file
@@ -88,10 +88,9 @@ RAM_SAFETY_MARGIN=0.6               # More conservative (60% instead of 70%)
 
 ### Step 3: Test with Smaller Files
 After redeploy, test with:
-- ✅ 5MB PDF - Should work instantly
-- ✅ 20MB PDF - Should process in ~15-30 seconds
-- ⚠️ 40MB PDF - Should work but takes ~1-2 minutes
-- ❌ 60MB+ PDF - Will be rejected at upload
+- ✅ 2MB PDF - Should work instantly
+- ✅ 5MB PDF - Should process in ~10-20 seconds
+- ❌ 6MB+ PDF - Will be rejected at upload (exceeds limit)
 
 ## Monitoring Memory Usage
 

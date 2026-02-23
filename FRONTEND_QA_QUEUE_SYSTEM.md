@@ -258,12 +258,12 @@ Cookie: session_id (auto-sent)
 {
   // File size check
   "allowed": boolean,              // Both size AND queue OK
-  "max_allowed_size": number,      // 85MB = 89128960 bytes
+  "max_allowed_size": number,      // 5MB = 5242880 bytes
   "available_ram": number,         // Current available RAM
   "message": string,               // Human-readable message
   
   // Queue capacity check (NEW)
-  "queue_available": boolean,      // Can accept job right now (with 3-4x buffer)?
+  "queue_available": boolean,      // Can accept job right now (with 8x buffer)?
   "queue_message": string,         // Queue-specific message
   "retry_after_seconds": number?, // How long to wait if full (null if available)
   "queue_count": number,           // Current jobs in queue (NOT your position!)
@@ -277,7 +277,7 @@ Cookie: session_id (auto-sent)
 ```json
 {
   "allowed": true,
-  "max_allowed_size": 89128960,
+  "max_allowed_size": 5242880,
   "available_ram": 450000000,
   "message": "OK",
   "queue_available": true,
@@ -293,7 +293,7 @@ Cookie: session_id (auto-sent)
 ```json
 {
   "allowed": false,
-  "max_allowed_size": 89128960,
+  "max_allowed_size": 5242880,
   "available_ram": 150000000,
   "message": "Server memory insufficient. Please try again shortly.",
   "queue_available": false,
@@ -309,9 +309,9 @@ Cookie: session_id (auto-sent)
 ```json
 {
   "allowed": false,
-  "max_allowed_size": 89128960,
+  "max_allowed_size": 5242880,
   "available_ram": 450000000,
-  "message": "File too large (103MB). Maximum allowed: 85MB",
+  "message": "File too large (8.2MB). Maximum allowed: 5MB",
   "queue_available": true,
   "queue_message": "OK",
   "retry_after_seconds": null,

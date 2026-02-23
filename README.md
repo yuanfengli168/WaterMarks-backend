@@ -135,14 +135,14 @@ Key environment variables in `.env`:
 
 ```bash
 # File size limits (adjust based on server RAM)
-ABSOLUTE_MAX_FILE_SIZE=524288000  # 500MB for local, 100MB for Render free tier
+ABSOLUTE_MAX_FILE_SIZE=5242880  # 5MB for Render free tier (512MB RAM, 3 concurrent jobs)
 RAM_SAFETY_MARGIN=0.7
 MIN_FREE_RAM_REQUIRED=104857600   # 100MB
 
 # Processing
-MAX_PARALLEL_WORKERS=4  # Reduce to 2 for free tier
+MAX_PARALLEL_WORKERS=2  # Reduce for free tier
 DEFAULT_CHUNK_SIZE=10
-MAX_CONCURRENT_JOBS=10  # Reduce to 5 for free tier
+MAX_CONCURRENT_JOBS=3  # Safe for 512MB RAM with 5MB files
 
 # Watermark customization
 WATERMARK_TEXT=WATERMARK
@@ -355,9 +355,9 @@ All errors return human-readable messages:
 
 ### Free Tier Recommendations
 When deploying on free hosting (e.g., Render Free with 512MB RAM):
-- Set `ABSOLUTE_MAX_FILE_SIZE=104857600` (100MB)
+- Set `ABSOLUTE_MAX_FILE_SIZE=5242880` (5MB)
 - Set `MAX_PARALLEL_WORKERS=2`
-- Set `MAX_CONCURRENT_JOBS=5`
+- Set `MAX_CONCURRENT_JOBS=3`
 - Implement frontend wake-up call using `/ping` endpoint to handle cold starts
 
 ## Technology Stack

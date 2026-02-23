@@ -69,7 +69,7 @@ Content-Type: application/json
 ```typescript
 {
   "allowed": true,                    // Both size AND queue OK
-  "max_allowed_size": 89128960,       // 85MB limit
+  "max_allowed_size": 5242880,        // 5MB limit
   "available_ram": 450000000,         // Current available RAM
   "message": "OK",                    // Human-readable message
   "queue_available": true,            // ⭐ Can accept this job now
@@ -84,7 +84,7 @@ Content-Type: application/json
 ```typescript
 {
   "allowed": false,
-  "max_allowed_size": 89128960,
+  "max_allowed_size": 5242880,
   "available_ram": 150000000,
   "message": "Server memory insufficient. Please try again shortly.",
   "queue_available": false,           // ⭐ Queue cannot accept
@@ -99,9 +99,9 @@ Content-Type: application/json
 ```typescript
 {
   "allowed": false,
-  "max_allowed_size": 89128960,
+  "max_allowed_size": 5242880,
   "available_ram": 450000000,
-  "message": "File too large (103MB). Maximum allowed: 85MB",
+  "message": "File too large (8.2MB). Maximum allowed: 5MB",
   "queue_available": true,            // Queue has space, but file too big
   "queue_message": "OK",
   "retry_after_seconds": null,        // No point waiting, file is too large
@@ -185,7 +185,7 @@ async function checkQueueBeforeUpload(file) {
     // Case 2: File too large (permanent rejection)
     if (!result.allowed && result.queue_available) {
       showError(result.message);
-      // Example: "File too large (103MB). Maximum allowed: 85MB"
+      // Example: "File too large (8.2MB). Maximum allowed: 5MB"
       return false;
     }
     
@@ -275,7 +275,7 @@ async function uploadFile(file) {
 "Server busy (3 job(s) processing, 5 in queue). Please try again in 3 minute(s)."
 
 // File too large
-"File too large (103MB). Maximum allowed: 85MB"
+"File too large (8.2MB). Maximum allowed: 5MB"
 
 // Uploading
 "Uploading: 45%"
@@ -394,8 +394,8 @@ Multiple users can process simultaneously if resources allow. Users with small f
 - [ ] NO upload happens (progress never shows)
 
 **3. File Too Large**
-- [ ] Select 100MB file
-- [ ] See "File too large (100MB). Maximum allowed: 85MB"
+- [ ] Select 6MB file
+- [ ] See "File too large (6.0MB). Maximum allowed: 5MB"
 - [ ] NO upload happens
 
 **4. Small File Concurrent**
@@ -416,7 +416,7 @@ Multiple users can process simultaneously if resources allow. Users with small f
 | Scenario | Before (Old) | After (New) |
 |----------|--------------|-------------|
 | Queue full | Upload 10-20 sec → "Queue full!" | Check < 1 sec → "Queue full!" (no upload) |
-| Bandwidth | Wasted 85MB if rejected | Zero waste |
+| Bandwidth | Wasted 5MB if rejected | Zero waste |
 | User feedback | After long upload | Immediate (< 1 sec) |
 | Queue visibility | Hidden | Shows active jobs + queue count |
 | Retry guidance | Generic "try later" | Specific "retry in 3 minutes" |
