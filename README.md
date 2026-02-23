@@ -17,6 +17,30 @@ A FastAPI-based backend service for adding watermarks to PDF files with chunking
 
 ## Architecture
 
+> 📄 **For a comprehensive AI-assisted development case study, see [AI_DEVELOPMENT_SUMMARY.md](AI_DEVELOPMENT_SUMMARY.md)**
+
+### WaterMarks Architecture summary: 
+
+#### Client-side or Server-side?
+
+**Server-side processing** with asynchronous job-based workflow. The client only handles file selection and progress polling—all PDF manipulation, watermarking, and merging occur on the backend. This approach prevents browser memory limitations (crucial for large PDFs), enables controlled resource management with RAM-aware throttling, and allows parallel chunk processing via `ThreadPoolExecutor`. Files are never held entirely in memory; they stream to disk immediately on upload and are processed in chunks. A persistent JSON-backed queue system manages concurrent jobs with session tracking, capacity checks (3-4x resource multipliers), and automatic cleanup after 1-minute download windows.
+
+#### Progress tracker:
+
+**Thread-safe `StatusManager`** class with lock-protected job status dictionary. Each job progresses through 4 phases tracked via callback functions: `uploading` (0%), `splitting` (1-30%), `adding_watermarks` (31-79%), and `finished` (100%). The `status_callback` function is passed down through `process_pdf_with_watermarks` → chunk splitting → parallel processing, updating progress after each completed chunk. Status updates are atomic operations with automatic timestamp tracking. Frontend polls `GET /api/status/{job_id}` every 1-2 seconds to retrieve current phase, percentage completion, and messages. The queue system extends this with position tracking and estimated wait times for queued jobs.
+
+#### Error handling:
+
+**Multi-layered validation and human-readable error messages**. Pre-upload: `check_size_allowance()` validates file size against available RAM (70% safety margin) before upload starts, preventing server crashes. On upload: `validate_file_size_on_upload()` re-checks size as defense against direct API calls, and `validate_pdf_structure()` detects corrupted files, encrypted PDFs, empty files, and structural errors using PyPDF2. During processing: Try-catch blocks at every level (splitting, watermarking, merging) catch `MemoryError`, `TimeoutError`, and generic exceptions, updating job status to `error` with descriptive messages. All errors return user-friendly messages like "The PDF is password-protected" instead of raw stack traces. Failed jobs trigger automatic cleanup of temp files via `cleanup_job_files()`. Queue system adds 503 rate limiting for capacity overload with retry-after headers. 
+
+
+
+
+
+
+
+
+
 ### Modules
 
 1. **Validator Module** (`modules/validator.py`)
